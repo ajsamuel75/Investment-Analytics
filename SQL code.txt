@@ -1,0 +1,473 @@
+-- This file is for Team 14 Business Challenge
+-- The entire team brought different approaches, ideas,financial and analytical insights and finally developed the codes together
+-- Team members are Aiswarya Jayanthi, Samuel Emehi, Giuseppe Almerico, and Mai Takara
+
+
+USE invest;
+
+/*
+-- Analysis 1: returns for 12months, 18months, and 24months of different asset classes (authors: Aiswarya & Samuel Emehi & Giuseppe Almerico & Mai)
+-- In order to find the returns, we used the following formula
+-- (P1-P0)/P0 which P1 = current price and P0 = previous price
+-- Created temp tables interval wise
+-- Focus on the asset analysis instead of overall returns
+-- Understanding individual asset performances to find insights and structure our analysis 
+-- inverse correlation between assets (equity-commodities) = make 1 part of reccomendations 
+*/ 
+
+
+SELECT	 sm.major_asset_class
+		    ,FORMAT(((temp.value - temp2.value) / temp2.value)*100, 1) AS "12 Months Return(%)"
+			,FORMAT(((temp.value - temp3.value) / temp3.value)*100, 1) AS "18 Months Return(%)"
+			,FORMAT(((temp.value - temp4.value) / temp4.value)*100, 1) AS "24 Months Return(%)"
+            
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+                        
+                        
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 365 DAY) 
+			AND temp2.price_type = 'Adjusted'
+
+  LEFT
+  JOIN	pricing_daily_new AS temp3
+  	 ON	temp.ticker = temp3.ticker
+			AND temp3.DATE = DATE_SUB('2022-09-09', INTERVAL 18 MONTH) 
+			AND temp3.price_type = 'Adjusted'
+            
+  LEFT
+  JOIN	pricing_daily_new AS temp4
+  	 ON	temp.ticker = temp4.ticker
+			AND temp4.DATE = DATE_SUB('2022-09-09', INTERVAL 24 MONTH) 
+			AND temp4.price_type = 'Adjusted'
+            
+            
+	LEFT
+  JOIN	security_masterlist AS temp5
+  	 ON	temp.ticker = temp5.ticker
+     
+     JOIN security_masterlist AS sm
+     ON temp.ticker = sm.ticker
+     Group by sm.major_asset_class
+            having "12 Months Return(%)" IS NOT NULL
+            AND "18 Months Return(%)" IS NOT NULL
+            AND "24 Months Return(%)" IS NOT NULL
+            Order by "24 Months Return(%)" desc
+            ;
+
+
+/*
+-- Analysis 2: Finding top 10 performing tickers during the last 12months (authors: Mai & Samuel Emehi)
+-- Using the formula to culculate the returns
+-- Creating temp table
+-- Joining tables to show the security names and major asset class type along with their performance
+-- Finding the top 10 to analyze how to improve client portfolio, based on that buy or hold shares (2 part of reccomendations)
+*/ 
+
+SELECT	pdn.`date`, temp.ticker, temp3.security_name, sm.major_asset_class
+		    ,(FORMAT((temp.value - temp2.value) / temp2.value, 2)) * 100 AS 12_Months_Return_percentage
+            
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 12 MONTH) 
+			AND temp2.price_type = 'Adjusted'            
+	LEFT
+  JOIN	security_masterlist AS temp3
+  	 ON	temp.ticker = temp3.ticker
+     
+     JOIN security_masterlist AS sm
+     ON temp.ticker = sm.ticker
+     
+     JOIN pricing_daily_new AS pdn
+     ON temp.ticker = pdn.ticker
+     WHERE pdn.`date` >= '2021-09-01'
+     Group by ticker
+            having 12_Months_Return_percentage IS NOT NULL
+            Order by 12_Months_Return_percentage desc
+            LIMIT 10
+            ;
+            
+/*            
+-- Analysis 3: finding top 10 riskiest securities (authors: Mai & Samuel Emehi)
+-- To understand how balance risks-returns-opportunities
+-- Improve portfolio analyisis and develop the 3 part of reccomendations
+-- Creating VIEW 
+*/ 
+
+CREATE VIEW team14_ddmban AS
+SELECT a.date, a.ticker, a.value, a.lagged_price, a.price_type,
+(a.value-a.lagged_price)/ a.lagged_price as returns
+FROM
+(SELECT *, LAG(value,1) OVER(
+							PARTITION BY ticker
+                            ORDER BY date
+                            ) as lagged_price
+FROM invest.pricing_daily_new
+WHERE price_type= 'Adjusted' AND date> '2019-09-09' #AND ticker= 'SPY'
+)a;
+
+
+-- Using the VIEW created above
+-- Calculating sigma to find the risk
+-- Excluding NULL from returns
+
+	SELECT *, 
+        STD(returns) AS sigma
+               FROM team14_ddmban
+               WHERE `returns` != 'NULL'
+               GROUP BY ticker
+               ORDER BY sigma ASC
+               LIMIT 10;
+               
+               
+-- Showing information about the tickers from the results above
+
+	select ticker, security_name, major_asset_class
+    from security_masterlist
+    where ticker in ("BIL","SHV", "SHY", "VGSH", "JPST", "BSV", "VTIP", "BNDX", "MBB", "VCSH" )
+    ;
+    
+
+-- Analysis 4: Overall portfolio Returns (Aiswarya & Giuseppe)
+-- Understanding full database
+
+
+SELECT	temp.ticker, temp5.security_name
+		    ,FORMAT((temp.value - temp2.value) / temp2.value, 4) AS 12_Months_Return
+			,FORMAT((temp.value - temp3.value) / temp3.value, 4) AS 18_Months_Return
+			,FORMAT((temp.value - temp4.value) / temp4.value, 4) AS 24_Months_Return
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 365 DAY) 
+			AND temp2.price_type = 'Adjusted'
+  LEFT
+  JOIN	pricing_daily_new AS temp3
+  	 ON	temp.ticker = temp3.ticker
+			AND temp3.DATE = DATE_SUB('2022-09-09', INTERVAL 18 MONTH) 
+			AND temp3.price_type = 'Adjusted'
+  LEFT
+  JOIN	pricing_daily_new AS temp4
+  	 ON	temp.ticker = temp4.ticker
+			AND temp4.DATE = DATE_SUB('2022-09-09', INTERVAL 24 MONTH) 
+			AND temp4.price_type = 'Adjusted'
+            
+	LEFT
+  JOIN	security_masterlist AS temp5
+  	 ON	temp.ticker = temp5.ticker
+Group by ticker
+            having 12_Months_Return IS NOT NULL
+            AND 18_Months_Return IS NOT NULL
+            AND 24_Months_Return IS NOT NULL
+            Order by 24_Months_Return desc;
+
+
+
+
+-- Analysis 5 : Clients Portfolio (authors: Aiswarya & Giuseppe & Samuel Emehi & Mai)
+-- Selected random cumstomer ID's are no.10, 32, 19, and 78
+-- Export analysis and focusing on 1 costumer(the worst)
+
+
+SELECT	 sm.major_asset_class
+		    ,FORMAT(AVG((temp.value - temp2.value) / temp2.value), 4) AS 12_Months_Return
+			,FORMAT(AVG((temp.value - temp3.value) / temp3.value), 4) AS 18_Months_Return
+			,FORMAT(AVG((temp.value - temp4.value) / temp4.value), 4) AS 24_Months_Return
+            
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 365 DAY) 
+			AND temp2.price_type = 'Adjusted'
+  LEFT
+  JOIN	pricing_daily_new AS temp3
+  	 ON	temp.ticker = temp3.ticker
+			AND temp3.DATE = DATE_SUB('2022-09-09', INTERVAL 18 MONTH) 
+			AND temp3.price_type = 'Adjusted'
+  LEFT
+  JOIN	pricing_daily_new AS temp4
+  	 ON	temp.ticker = temp4.ticker
+			AND temp4.DATE = DATE_SUB('2022-09-09', INTERVAL 24 MONTH) 
+			AND temp4.price_type = 'Adjusted'
+            
+	LEFT
+  JOIN	security_masterlist AS temp5
+  	 ON	temp.ticker = temp5.ticker
+     
+     JOIN security_masterlist AS sm
+     ON temp.ticker = sm.ticker
+     JOIN customer_details as temp6
+     ON temp.ticker= temp6.customer_id
+     WHERE temp6.customer_id IN (10, 32, 19, 78)
+     Group by sm.major_asset_class
+            having 12_Months_Return IS NOT NULL
+            AND 18_Months_Return IS NOT NULL
+            AND 24_Months_Return IS NOT NULL
+            Order by 24_Months_Return desc
+            ;
+
+-- OR -- 
+
+SELECT	 sm.major_asset_class
+		    ,FORMAT(AVG((temp.value - temp2.value) / temp2.value), 4) AS 12_Months_Return
+			,FORMAT(AVG((temp.value - temp3.value) / temp3.value), 4) AS 18_Months_Return
+			,FORMAT(AVG((temp.value - temp4.value) / temp4.value), 4) AS 24_Months_Return
+            
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 250 DAY) 
+			AND temp2.price_type = 'Adjusted'
+  LEFT
+  JOIN	pricing_daily_new AS temp3
+  	 ON	temp.ticker = temp3.ticker
+			AND temp3.DATE = DATE_SUB('2022-09-09', INTERVAL 375 DAY) 
+			AND temp3.price_type = 'Adjusted'
+  LEFT
+  JOIN	pricing_daily_new AS temp4
+  	 ON	temp.ticker = temp4.ticker
+			AND temp4.DATE = DATE_SUB('2022-09-09', INTERVAL 500 DAY) 
+			AND temp4.price_type = 'Adjusted'
+            
+	LEFT
+  JOIN	security_masterlist AS temp5
+  	 ON	temp.ticker = temp5.ticker
+     
+     JOIN security_masterlist AS sm
+     ON temp.ticker = sm.ticker
+     JOIN customer_details as temp6
+     ON temp.ticker= temp6.customer_id
+     WHERE temp6.customer_id IN (10, 32, 19, 78)
+     Group by sm.major_asset_class
+            having 12_Months_Return IS NOT NULL
+            AND 18_Months_Return IS NOT NULL
+            AND 24_Months_Return IS NOT NULL
+            Order by 24_Months_Return desc
+            ;
+            
+/*
+-- Analysis 6 Volatility of the portfolio (moving average) (authors: Aiswarya & Giuseppe)
+-- A moving average (MA) is a stock indicator commonly used in technical analysis, 
+used to help smooth out price data by creating a constantly updated average price. 
+A rising moving average indicates that the security is in an uptrend, while a declining moving average indicates a downtrend.
+*/
+
+select *,
+  avg(`value`) OVER(ORDER BY Date
+      ROWS BETWEEN 1 PRECEDING AND CURRENT ROW )
+     as 2day_moving_average,
+  avg(`value`) OVER(ORDER BY Date
+      ROWS BETWEEN 29 PRECEDING AND CURRENT ROW )
+      as 30day_moving_average
+from pricing_daily_new
+where `date`= DATE_SUB('2022-09-09', INTERVAL 365 day) 
+AND price_type= 'Adjusted'
+limit 500;
+
+-- Analysis 7 Correlation Analysis between Assets (author: Samuel Emehi)
+-- Finding if assets have relations between them and how strong is the correlation 
+-- Insights = diversification of portfolio based on the assets performances 
+-- Buy/Hold/Sell tickers based on the correlation level between them
+-- Decrease the risks and increase ratio Return/Risks by re-allocation of shares 
+-- Decreasing risks by reducing the correlation between tickers or companies and in the same time 
+
+CREATE VIEW team_14_corrdd AS 
+SELECT	pdn.`date`, temp.ticker, temp3.security_name, sm.major_asset_class
+		    ,FORMAT((temp.value - temp2.value) / temp2.value, 2) AS 12_Months_Return
+            
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 12 MONTH) 
+			AND temp2.price_type = 'Adjusted'            
+	LEFT
+  JOIN	security_masterlist AS temp3
+  	 ON	temp.ticker = temp3.ticker
+     
+     JOIN security_masterlist AS sm
+     ON temp.ticker = sm.ticker
+     
+     JOIN pricing_daily_new AS pdn
+     ON temp.ticker = pdn.ticker
+     WHERE pdn.`date` >= '2021-09-01'
+     Group by ticker
+            having 12_Months_Return IS NOT NULL
+            Order by 12_Months_Return desc
+            ;  
+
+
+CREATE VIEW team_14_corrdd AS 
+SELECT	pdn.`date`, temp.ticker, temp3.security_name, sm.major_asset_class
+		    ,FORMAT((temp.value - temp2.value) / temp2.value, 2) AS 12_Months_Return
+            
+  FROM
+			(
+			SELECT	*
+			  FROM	pricing_daily_new
+			 WHERE	DATE = '2022-09-09'
+			 			AND price_type = 'Adjusted'
+			) AS temp
+  LEFT
+  JOIN	pricing_daily_new AS temp2
+	 ON	temp.ticker = temp2.ticker
+			AND temp2.DATE = DATE_SUB('2022-09-09', INTERVAL 12 MONTH) 
+			AND temp2.price_type = 'Adjusted'            
+	LEFT
+  JOIN	security_masterlist AS temp3
+  	 ON	temp.ticker = temp3.ticker
+     
+     JOIN security_masterlist AS sm
+     ON temp.ticker = sm.ticker
+     
+     JOIN pricing_daily_new AS pdn
+     ON temp.ticker = pdn.ticker
+     WHERE pdn.`date` >= '2021-09-01'
+     Group by ticker
+            having 12_Months_Return IS NOT NULL
+            Order by 12_Months_Return desc
+            ;  
+
+CREATE  VIEW team_14_equity_assets AS 
+ SELECT equity
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE equity != 'NULL';
+
+CREATE  VIEW team_14_comm_assets AS 
+ SELECT commodities
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE commodities != 'NULL';
+ 
+ CREATE  VIEW team_14_fixed_income_assets AS 
+ SELECT fixed_income
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE fixed_income != 'NULL';
+ 
+ CREATE  VIEW team_14_alter_assets AS 
+ SELECT alternatives
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE alternatives != 'NULL';
+ 
+ CREATE  VIEW team_14_fixedincome_assets AS 
+ SELECT fixedincome
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE fixedincome != 'NULL';
+ 
+CREATE  VIEW team_14_equty_assets AS 
+ SELECT equty
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE equty != 'NULL';
+ 
+ CREATE  VIEW team_14_fixed_income_corporate_assets AS 
+ SELECT fixed_income_corporate
+ FROM team_14_correlation_raw_data_ddmban
+ WHERE fixed_income_corporate != 'NULL';
+
+
+ SELECT 
+	  Pearson_Correlation_Coefficient,
+    CASE 
+        WHEN Pearson_Correlation_Coefficient = 0 THEN 'There is No Correlation'
+        WHEN
+            Pearson_Correlation_Coefficient > 0
+                AND Pearson_Correlation_Coefficient < 0.3
+        THEN
+            'Low Correlation'
+        WHEN
+            Pearson_Correlation_Coefficient < 0
+                AND Pearson_Correlation_Coefficient > - 0.3
+        THEN
+            'Low Correlation'
+        WHEN
+            Pearson_Correlation_Coefficient >= 0.3
+                AND Pearson_Correlation_Coefficient < 0.5
+        THEN
+            'Moderate Correlation'
+        WHEN
+            Pearson_Correlation_Coefficient <= - 0.3
+                AND Pearson_Correlation_Coefficient > - 0.5
+        THEN
+            'Moderate Correlation'
+        WHEN
+            Pearson_Correlation_Coefficient >= 0.5
+                AND Pearson_Correlation_Coefficient < 1.0
+        THEN
+            'High Correlation'
+        WHEN
+            Pearson_Correlation_Coefficient <= - 0.5
+                AND Pearson_Correlation_Coefficient > - 1.0
+        THEN
+            'High Correlation'
+    END AS correlation_result
+FROM 
+(SELECT 
+	 ROUND((COUNT(*) * SUM(a.equity * b.commodities) - SUM(a.equity) * SUM(b.commodities)) / (SQRT(COUNT(*) * SUM(a.equity * a.equity) - SUM(a.equity) * SUM(a.equity)) * SQRT(COUNT(*) * SUM(b.commodities * b.commodities) - SUM(b.commodities) * SUM(b.commodities))),
+                    4) as Pearson_Correlation_Coefficient
+ FROM team_14_correlation_raw_data_ddmban AS raw
+ JOIN team_14_equity_assets AS a
+ ON raw.equity = a.equity
+ JOIN team_14_comm_assets AS b
+ ON raw.commodities = b.commodities) team_14_correlation_raw_data_ddmban;
+
+
+
+-- Appendix : Regression Analysis (author Aiswarya)
+
+select slope, 
+       y_bar_max - x_bar_max * slope as intercept 
+from (
+    select sum((`value` - x_bar) * (quantity - y_bar)) / sum((`value` - x_bar) * (`value` - x_bar)) as slope,
+           max(x_bar) as x_bar_max,
+           max(y_bar) as y_bar_max    
+    from (
+        select `value`, avg(`value`) over () as x_bar,
+               quantity, avg(quantity) over () as y_bar
+        from holdings_current
+        )data1
+        )data2;
+   /* generating data to plot the line graph*/     
+	select `value`, quantity , 0.06576517101209871 * `value` + 544.1030719939564 as y_fit 
+    from (
+    select `value`, quantity from holdings_current)data3; 
